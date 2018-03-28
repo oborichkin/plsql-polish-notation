@@ -71,8 +71,6 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         curr_elem PLS_INTEGER := 1;
     BEGIN
         normalize_expr(t_expr);
-        DBMS_OUTPUT.PUT_LINE(t_expr);
-        DBMS_OUTPUT.PUT_LINE('amount of ops: '||REGEXP_COUNT(t_expr, regexp));
         FOR i IN 1..REGEXP_COUNT(t_expr, regexp) LOOP
             expr_plan(curr_elem) := REGEXP_SUBSTR(t_expr, regexp, 1, i);
             curr_elem := curr_elem + 1;
@@ -101,10 +99,6 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
                 END IF;
                 push(expr_plan(i));
             END IF;
-            DBMS_OUTPUT.PUT_LINE('<'||expr_plan(i)||'>');
-            DBMS_OUTPUT.PUT_LINE(r_expr);
-            draw();
-            DBMS_OUTPUT.PUT_LINE('------------');
         END LOOP;
         
         WHILE peak() IS NOT NULL LOOP
@@ -123,8 +117,24 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         
     FUNCTION pre_to_post (expr VARCHAR2)
         RETURN VARCHAR2 AS
+        r_expr VARCHAR2(4000) := '';
+        temp   VARCHAR2(38);
     BEGIN
-        RETURN NULL;
+        FOR i IN REVERSE 1..REGEXP_COUNT(expr, '[^[:space:]]+') LOOP
+            temp := REGEXP_SUBSTR(expr, '[^[:space:]]+', 1, i);
+            IF REGEXP_LIKE(temp, '\d') THEN
+                push(temp);
+            ELSE
+                IF peak() IS NOT NULL THEN
+                    r_expr := r_expr || ' ' || pop();
+                    r_expr := r_expr || ' ' || pop();
+                END IF;
+                r_expr := r_expr  || ' ' || temp;
+            END IF;
+        END LOOP;
+        
+        clear();
+        RETURN r_expr;
     END;
         
     FUNCTION post_to_in (expr VARCHAR2)
@@ -135,8 +145,24 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         
     FUNCTION post_to_pre (expr VARCHAR2)
         RETURN VARCHAR2 AS
+        r_expr VARCHAR2(4000) := '';
+        temp   VARCHAR2(38);
     BEGIN
-        RETURN NULL;
+        FOR i IN 1..REGEXP_COUNT(expr, '[^[:space:]]+') LOOP
+            temp := REGEXP_SUBSTR(expr, '[^[:space:]]+', 1, i);
+            IF REGEXP_LIKE(temp, '\d') THEN
+                push(temp);
+            ELSE
+                IF peak() IS NOT NULL THEN
+                    r_expr := pop() || ' ' || r_expr;
+                    r_expr := pop() || ' ' || r_expr;
+                END IF;
+                r_expr := temp  || ' ' || r_expr;
+            END IF;
+        END LOOP;
+        
+        clear();
+        RETURN r_expr;
     END;
         
 END pol_not;
