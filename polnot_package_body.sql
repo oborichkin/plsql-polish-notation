@@ -1,19 +1,22 @@
 CREATE OR REPLACE PACKAGE BODY pol_not AS
-
-    TYPE expr_array IS TABLE OF VARCHAR2(38) INDEX BY PLS_INTEGER;
-    TYPE ops_array  IS TABLE OF VARCHAR2(38) INDEX BY PLS_INTEGER;
     
-    ops_stack ops_array;
+    TYPE expr_array IS TABLE OF VARCHAR2(38) INDEX BY PLS_INTEGER;
+    TYPE varchar_array  IS TABLE OF VARCHAR2(4000) INDEX BY PLS_INTEGER;
+    
+    -- Stack for simplifying alghorithms
+    stack varchar_array;
     pointer PLS_INTEGER := -1;
     
     regexp CONSTANT VARCHAR2(80) := '[-\+\*\/\^\(\)]|(\d+)|(\d+(\.|,)\d+)|((\.|,)\d+)';
     
-    PROCEDURE push (op VARCHAR2) AS
+    -- Push elem to stack
+    PROCEDURE push (elem VARCHAR2) AS
     BEGIN
         pointer := pointer + 1;
-        ops_stack(pointer) := op;
+        stack(pointer) := elem;
     END;
     
+    -- Pop elem from stack
     FUNCTION pop RETURN VARCHAR2 AS
     BEGIN
         IF pointer = -1 THEN
@@ -21,32 +24,42 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         END IF;
         
         pointer := pointer - 1;
-        RETURN ops_stack(pointer+1);
+        RETURN stack(pointer+1);
     END;
     
+    -- Look at the top element of stack
     FUNCTION peak RETURN VARCHAR2 AS
     BEGIN
         IF pointer = -1 THEN
             RETURN NULL;
         END IF;
         
-        RETURN ops_stack(pointer);
+        RETURN stack(pointer);
     END;
     
+    -- Print into serveroutput current state of stack.
+    -- Use for debugging purpouses
     PROCEDURE draw AS
     BEGIN
         FOR i IN REVERSE 0..pointer LOOP
-            DBMS_OUTPUT.PUT('<' || ops_stack(i) || '> ');
+            DBMS_OUTPUT.PUT('<' || stack(i) || '> ');
         END LOOP;
         DBMS_OUTPUT.NEW_LINE();
     END;
     
+    -- Clear stack:
+    --      - Delete elements
+    --      - Reset pointer
+    -- Don't forget to clear stack after/before working with it
     PROCEDURE clear AS
     BEGIN
         pointer := -1;
-        ops_stack.DELETE();
+        stack.DELETE();
     END;
     
+    -- Normalizes infix expression
+    --      - Removes whitespaces
+    --      - Replace unary minus with substraction from zero
     PROCEDURE normalize_expr (expr IN OUT VARCHAR2) AS
     BEGIN
         -- Remove spaces from expression
@@ -55,11 +68,18 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         expr := REGEXP_REPLACE(expr, '^-', '0-');
         expr := REGEXP_REPLACE(expr, '\(-', '(0-');
     END;
-
+    
     FUNCTION in_to_pre (expr VARCHAR2)
         RETURN VARCHAR2 AS
+        r_expr VARCHAR2(4000);
     BEGIN
-        RETURN NULL;
+        -- in_to_pre(expr) = post_to_pre(in_to_post(expr))
+        -- Works, but slower than normal algorithm
+        -- TODO: Replace this with normal algorithm
+        r_expr := in_to_post(expr);
+        r_expr := post_to_pre(r_expr);
+        
+        RETURN r_expr;
     END;
     
     FUNCTION in_to_post (expr VARCHAR2)
@@ -70,6 +90,7 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         expr_plan expr_array;
         curr_elem PLS_INTEGER := 1;
     BEGIN
+        clear();
         normalize_expr(t_expr);
         FOR i IN 1..REGEXP_COUNT(t_expr, regexp) LOOP
             expr_plan(curr_elem) := REGEXP_SUBSTR(t_expr, regexp, 1, i);
@@ -111,8 +132,15 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         
     FUNCTION pre_to_in (expr VARCHAR2)
         RETURN VARCHAR2 AS
+        r_expr VARCHAR2(4000);
     BEGIN
-        RETURN NULL;
+        -- pre_to_in(expr) = post_to_in(pre_to_post(expr))
+        -- Works, but slower than normal algorithm
+        -- TODO: Replace this with normal algorithm
+        r_expr := pre_to_post(expr);
+        r_expr := post_to_in(r_expr);
+        
+        RETURN r_expr;
     END;
         
     FUNCTION pre_to_post (expr VARCHAR2)
@@ -139,30 +167,49 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         
     FUNCTION post_to_in (expr VARCHAR2)
         RETURN VARCHAR2 AS
-    BEGIN
-        RETURN NULL;
-    END;
-        
-    FUNCTION post_to_pre (expr VARCHAR2)
-        RETURN VARCHAR2 AS
-        r_expr VARCHAR2(4000) := '';
-        temp   VARCHAR2(38);
+        left_op  VARCHAR2(38);
+        right_op VARCHAR2(38);
+        temp     VARCHAR2(4000);
     BEGIN
         FOR i IN 1..REGEXP_COUNT(expr, '[^[:space:]]+') LOOP
             temp := REGEXP_SUBSTR(expr, '[^[:space:]]+', 1, i);
             IF REGEXP_LIKE(temp, '\d') THEN
                 push(temp);
             ELSE
-                IF peak() IS NOT NULL THEN
-                    r_expr := pop() || ' ' || r_expr;
-                    r_expr := pop() || ' ' || r_expr;
-                END IF;
-                r_expr := temp  || ' ' || r_expr;
+                right_op := pop();
+                left_op  := pop();
+                temp := '(' || left_op || ' ' || temp || ' ' || right_op || ')';
+                push(temp);
             END IF;
         END LOOP;
         
+        temp := pop();
         clear();
-        RETURN r_expr;
+        RETURN temp;
+    END;
+        
+    FUNCTION post_to_pre (expr VARCHAR2)
+        RETURN VARCHAR2 AS
+        right_most   VARCHAR2(4000);
+        right_first  VARCHAR2(4000);
+        temp         VARCHAR2(4000);
+    BEGIN
+        clear();
+        
+        FOR i IN 1..REGEXP_COUNT(expr, '[^[:space:]]+') LOOP
+            temp := REGEXP_SUBSTR(expr, '[^[:space:]]+', 1, i);
+            IF REGEXP_LIKE(temp, '\d') THEN
+                push(temp);
+            ELSE
+                right_most  := pop();
+                right_first := pop();
+                temp := temp  || ' ' || right_first || ' ' || right_most;
+                push(temp);
+            END IF;
+        END LOOP;
+        temp := pop();
+        clear();
+        RETURN temp;
     END;
         
 END pol_not;
