@@ -145,7 +145,8 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
         
     FUNCTION pre_to_post (expr VARCHAR2)
         RETURN VARCHAR2 AS
-        r_expr VARCHAR2(4000) := '';
+        left_first  VARCHAR(4000);
+        left_second VARCHAR2(4000);
         temp   VARCHAR2(38);
     BEGIN
         FOR i IN REVERSE 1..REGEXP_COUNT(expr, '[^[:space:]]+') LOOP
@@ -153,16 +154,15 @@ CREATE OR REPLACE PACKAGE BODY pol_not AS
             IF REGEXP_LIKE(temp, '\d') THEN
                 push(temp);
             ELSE
-                IF peak() IS NOT NULL THEN
-                    r_expr := r_expr || ' ' || pop();
-                    r_expr := r_expr || ' ' || pop();
-                END IF;
-                r_expr := r_expr  || ' ' || temp;
+                left_first := pop();
+                left_second := pop();
+                temp := left_first || ' ' || left_second || ' ' || temp;
+                push(temp);
             END IF;
         END LOOP;
-        
+        temp := pop();
         clear();
-        RETURN r_expr;
+        RETURN temp;
     END;
         
     FUNCTION post_to_in (expr VARCHAR2)
